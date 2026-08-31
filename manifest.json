@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.carcuevas.public-ip",
+  "name": "Public IP",
+  "version": "1.0.0",
+  "author": "Kajo",
+  "license": "MIT",
+  "description": "Displays the current public IP address in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Public IP",
+    "description": "Displays the current public IP address in the Omarchy bar.",
+    "category": "Network",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
