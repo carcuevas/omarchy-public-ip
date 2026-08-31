@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.carcuevas.public-ip",
   "name": "Public IP",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Kajo",
   "license": "MIT",
   "description": "Displays the current public IP address in the Omarchy bar.",
