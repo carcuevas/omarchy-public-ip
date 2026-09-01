@@ -1,5 +1,4 @@
 import QtQuick
-import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -13,15 +12,14 @@ BarWidget {
     property string networkState: ""
     property bool busy: false
 
-    // Text widgets must use WidgetButton rather than BarIconButton:
-    // BarIconButton reserves a fixed icon slot, while the IP needs its
-    // natural text width.
     visible: true
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
 
     function refresh() {
-        if (busy) return
+        if (busy)
+            return
+
         busy = true
         publicIpProc.running = true
     }
@@ -32,13 +30,22 @@ BarWidget {
 
     Process {
         id: publicIpProc
-        command: ["curl", "-4", "-fsS", "--max-time", "8", "https://api.ipify.org"]
+
+        command: [
+            "curl",
+            "-4",
+            "-fsS",
+            "--max-time", "8",
+            "https://api.ipify.org"
+        ]
 
         stdout: StdioCollector {
             onStreamFinished: {
                 var value = String(text || "").trim()
+
                 if (value !== "")
                     root.publicIp = value
+
                 root.busy = false
             }
         }
@@ -48,7 +55,12 @@ BarWidget {
 
     Process {
         id: networkStateProc
-        command: ["sh", "-c", "ip -br addr | awk '$1 != \"lo\" {print $1,$2,$3}'"]
+
+        command: [
+            "sh",
+            "-c",
+            "ip -br addr | awk '$1 != \"lo\" {print $1,$2,$3}'"
+        ]
 
         stdout: StdioCollector {
             onStreamFinished: {
@@ -64,21 +76,23 @@ BarWidget {
         stderr: StdioCollector {}
     }
 
-    // Normal periodic refresh.
+    // Refresh immediately at startup and then every five minutes.
     Timer {
         interval: 300000
         repeat: true
         running: true
         triggeredOnStart: true
+
         onTriggered: root.refresh()
     }
 
-    // Detect interface/address changes.
+    // Detect local interface/address changes.
     Timer {
         interval: 5000
         repeat: true
         running: true
         triggeredOnStart: true
+
         onTriggered: root.checkNetwork()
     }
 
@@ -95,8 +109,11 @@ BarWidget {
 
         tooltipText: root.busy
             ? "Updating public IP…"
-            : "Public IP: " + (root.publicIp !== "" ? root.publicIp : "unknown")
+            : "Public IP: " + (
+                root.publicIp !== "" ? root.publicIp : "unknown"
+            )
 
+        // Right-click forces an immediate refresh.
         onPressed: function(buttonId) {
             if (buttonId === Qt.RightButton)
                 root.refresh()
