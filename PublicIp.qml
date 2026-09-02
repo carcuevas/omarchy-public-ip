@@ -11,6 +11,7 @@ BarWidget {
     property string publicIp: ""
     property string networkState: ""
     property bool busy: false
+    property bool networkProbeBusy: false
 
     visible: true
     implicitWidth: button.implicitWidth
@@ -36,13 +37,9 @@ BarWidget {
     function isValidIpv6(value) {
         value = String(value || "").trim()
 
-        // IPv6 addresses contain at least two colons and may use :: once.
         if (value.length < 2 || value.length > 39 || value.indexOf(":") === -1)
             return false
 
-        // Reject whitespace and IPv4-mapped/embedded IPv4 forms here.
-        // The endpoint is queried with curl's IPv6 mode, so a pure IPv6
-        // textual address is what we expect.
         if (/\s/.test(value) || value.indexOf(".") !== -1)
             return false
 
@@ -63,11 +60,9 @@ BarWidget {
             nonEmptyGroups++
         }
 
-        // Without :: there must be exactly 8 groups.
         if (doubleColon === -1)
             return nonEmptyGroups === 8
 
-        // With ::, it must compress at least one group.
         return nonEmptyGroups < 8
     }
 
@@ -84,19 +79,40 @@ BarWidget {
     }
 
     function checkNetwork() {
+        if (networkProbeBusy)
+            return
+
+        networkProbeBusy = true
         networkStateProc.running = true
     }
 
     Process {
         id: publicIpProc
 
-        // Try IPv4 first and fall back to IPv6 if IPv4 is unavailable.
-        // The output is capped at 64 bytes before reaching StdioCollector.
+        // Each attempt is producer-capped at 64 bytes before it reaches the
+        // temporary file. Only the successful attempt is emitted, so IPv4
+        // and IPv6 output can never be concatenated into one collector.
         command: [
-            "sh",
+            "setsid",
+            "timeout",
+            "--signal=TERM",
+            "--kill-after=1s",
+            "9s",
+            "bash",
             "-c",
-            "curl -4 -fsS --max-time 8 --max-filesize 64 https://api.ipify.org || " +
-            "curl -6 -fsS --max-time 8 --max-filesize 64 https://api64.ipify.org"
+            "set -o pipefail; " +
+            "tmp=$(mktemp) || exit 1; " +
+            "trap 'rm -f \"$tmp\"' EXIT; " +
+            "curl -4 -fsS --max-time 8 https://api.ipify.org 2>/dev/null | " +
+            "head -c 64 > \"$tmp\"; " +
+            "rc=${PIPESTATUS[0]}; " +
+            "if [ \"$rc\" -eq 0 ]; then cat \"$tmp\"; exit 0; fi; " +
+            ": > \"$tmp\"; " +
+            "curl -6 -fsS --max-time 8 https://api64.ipify.org 2>/dev/null | " +
+            "head -c 64 > \"$tmp\"; " +
+            "rc=${PIPESTATUS[0]}; " +
+            "if [ \"$rc\" -eq 0 ]; then cat \"$tmp\"; exit 0; fi; " +
+            "exit \"$rc\""
         ]
 
         stdout: StdioCollector {
@@ -109,17 +125,32 @@ BarWidget {
                 root.busy = false
             }
         }
-
-        stderr: StdioCollector {}
     }
 
     Process {
         id: networkStateProc
 
+        // Bound interface count, field lengths, address count, and total
+        // serialized output. stderr is discarded and the whole process group
+        // has a hard deadline.
         command: [
-            "sh",
+            "setsid",
+            "timeout",
+            "--signal=TERM",
+            "--kill-after=1s",
+            "3s",
+            "bash",
             "-c",
-            "ip -br addr | awk '$1 != \"lo\" {print $1,$2,$3}'"
+            "trap 'exit 124' TERM INT; " +
+            "ip -br addr 2>/dev/null | " +
+            "awk 'BEGIN { total=0 } " +
+            "NR > 32 { exit 2 } " +
+            "{ line=substr($1,1,32) \" \" substr($2,1,16); " +
+            "  for (i=3; i<=NF && i<=10; i++) " +
+            "    line=line \" \" substr($i,1,64); " +
+            "  line=line \"\\\\n\"; " +
+            "  if (total + length(line) > 2048) exit 2; " +
+            "  printf \"%s\", line; total += length(line) }'"
         ]
 
         stdout: StdioCollector {
@@ -130,10 +161,10 @@ BarWidget {
                     root.networkState = state
                     root.refresh()
                 }
+
+                root.networkProbeBusy = false
             }
         }
-
-        stderr: StdioCollector {}
     }
 
     Timer {
@@ -141,6 +172,7 @@ BarWidget {
         repeat: true
         running: true
         triggeredOnStart: true
+
         onTriggered: root.refresh()
     }
 
@@ -149,6 +181,7 @@ BarWidget {
         repeat: true
         running: true
         triggeredOnStart: true
+
         onTriggered: root.checkNetwork()
     }
 
